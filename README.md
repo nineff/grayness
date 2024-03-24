@@ -24,7 +24,8 @@ This plugin provides the following functions:
 
   ```
 
-- `convert(imagebytes)`: used to display filetypes not directly supported by typst such as WebP by converting to PNG internally
+- `convert(imagebytes)`: used to display filetypes not directly supported by typst such as WebP by converting to PNG internally.
+
   Supported filetypes:
   - Bmp
   - Dds
