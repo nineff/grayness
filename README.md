@@ -52,6 +52,7 @@ Example usage:
 ```
 
 - `crop(imagebytes, startx, starty, width, height)`: crop the image starting from the given x,y coordinates (top left corner) to the specified width and height from there. All values are in pixels
+  
   Example Usage:
 
   ```typst
@@ -67,6 +68,7 @@ Example usage:
   )
 
 - `grayscale(imagebytes)`: turn the image into a black-and white version of itself
+
   Example Usage:
 
   ```typst
@@ -78,6 +80,7 @@ Example usage:
   )
 
 - `rotate90(imagebytes)`: rotate the image by 90° clockwise
+
   Example Usage:
 
   ```typst
@@ -89,6 +92,7 @@ Example usage:
   )
 
 - `rotate180(imagebytes)`: rotate the image by 180°
+  
   Example Usage:
 
   ```typst
@@ -100,6 +104,7 @@ Example usage:
   )
 
 - `rotate270(imagebytes)`: rotate the image by 270° clockwise
+  
   Example Usage:
 
   ```typst
@@ -111,6 +116,7 @@ Example usage:
   )
 
 - `flipv(imagebytes)`: flip the image vertically
+  
   Example Usage:
 
   ```typst
@@ -122,6 +128,7 @@ Example usage:
   )
 
 - `fliph(imagebytes)`: flip the image horizontally
+  
   Example Usage:
 
   ```typst
