@@ -8,6 +8,7 @@ It uses the [wasm-minimal-protocol](https://github.com/astrale-sharp/wasm-minima
 This plugin provides the following functions:
 
 - `blur(imagebytes, sigma)`: performs a Gaussian blur on the image. Sigma is a measure of how much to blur by. *Warning: This operation is SLOW*
+
   Example usage:
 
   ```typst
