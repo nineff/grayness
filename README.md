@@ -63,7 +63,7 @@ Example usage:
       bytes("10"), //start x location in pixels
       bytes("20"), //start y location in pixels
       bytes("100"), //width in pixels
-      bytes("200") //heigth in pixels
+      bytes("200") //height in pixels
     )
   )
 
