@@ -1,4 +1,4 @@
-use image::{io::Reader as ImageReader, DynamicImage, ImageFormat};
+use image::{io::Reader as ImageReader, DynamicImage, ImageFormat, ImageBuffer, GenericImageView, Pixel, Rgba};
 use std::{io::Cursor, str::from_utf8};
 use wasm_minimal_protocol::*;
 
@@ -27,7 +27,7 @@ pub fn grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 #[wasm_func]
 pub fn convert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    
+
     match format {
         ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
         }
@@ -179,6 +179,34 @@ pub fn rotate270(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     match format {
         ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
         }
+        _ => {
+            format = ImageFormat::Png;
+        }
+    }
+    let mut bytes: Vec<u8> = Vec::new();
+    res.write_to(&mut Cursor::new(&mut bytes), format)
+        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
+
+    Ok(bytes)
+}
+
+#[wasm_func]
+pub fn transparency(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
+    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let amount = bytes_to_int(amount)?;
+    let (width, height) = img.dimensions();
+
+    let res: ImageBuffer<Rgba<_>, Vec<u8>> = ImageBuffer::new(width, height);
+
+    for y in 0..height {
+        for x in 0..width {
+            let mut pixel_color = img.get_pixel(x, y);
+            pixel_color.apply_with_alpha(|rgb| rgb,|_| amount);            
+        }
+    }
+
+    match format {
+        ImageFormat::Png => {}
         _ => {
             format = ImageFormat::Png;
         }
