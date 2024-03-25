@@ -139,9 +139,22 @@ Example usage:
     )
   )
 
+- `transparency(imagebytes, alpha)`: add (or change) the transparency of the image to the level given by alpha (0-255)
+
+  Example Usage:
+
+  ```typst
+  #let pl = plugin("gray_ness.wasm")
+  #image.decode(
+    pl.transparency(
+      read("example.jpg",encoding: none), //formats without transparency support will be converted to PNG
+	  bytes("128") //50% transparent
+    )
+  )
+
 ## Compile
 
-To compile this plugin, you need to have a working [Rust toolchain](https://www.rust-lang.org/). The Rust Version should be 1.76, I could not get it to work with 1.77. Then you need to install the `wasm32-unknown-unknown` target:
+To compile this plugin, you need to have a working [Rust toolchain](https://www.rust-lang.org/). Then you need to install the `wasm32-unknown-unknown` target:
 
 ```sh
 rustup target add wasm32-unknown-unknown
