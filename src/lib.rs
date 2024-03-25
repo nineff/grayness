@@ -1,4 +1,4 @@
-use image::{io::Reader as ImageReader, DynamicImage, ImageFormat, ImageBuffer, GenericImageView, Pixel, Rgba};
+use image::{DynamicImage, GenericImageView, ImageFormat, Pixel, io::Reader as ImageReader};
 use std::{io::Cursor, str::from_utf8};
 use wasm_minimal_protocol::*;
 
@@ -192,16 +192,18 @@ pub fn rotate270(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 
 #[wasm_func]
 pub fn transparency(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let (mut img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
     let amount = bytes_to_int(amount)?;
     let (width, height) = img.dimensions();
 
-    let res: ImageBuffer<Rgba<_>, Vec<u8>> = ImageBuffer::new(width, height);
+    let res = img
+        .as_mut_rgba8()
+        .ok_or("Failed to convert image to RGBA8")?;
 
     for y in 0..height {
         for x in 0..width {
-            let mut pixel_color = img.get_pixel(x, y);
-            pixel_color.apply_with_alpha(|rgb| rgb,|_| amount);            
+            let pixel_color = res.get_pixel_mut(x, y);
+            pixel_color.apply_with_alpha(|rgb| rgb, |_| amount);
         }
     }
 
