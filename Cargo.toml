@@ -1,6 +1,6 @@
 [package]
 name = "gray_ness"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Nikolai Neff-Sarnow"]
 description = "This is a proof of concept typst wasm-plugin to allow simple image editing functions from within typst, written in Rust."
@@ -19,6 +19,6 @@ wasm-minimal-protocol = { git = "https://github.com/astrale-sharp/wasm-minimal-p
 [profile.release]
 lto = true          # Enable link-time optimization
 strip = true        # Strip symbols from binary*
-opt-level = 'z'     # Optimize for size
+opt-level = 3       # optimize for speed
 codegen-units = 1   # Reduce number of codegen units to increase optimizations
 panic = 'abort'     # Abort on panic
