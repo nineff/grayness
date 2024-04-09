@@ -1,4 +1,4 @@
-use image::{DynamicImage, GenericImageView, ImageFormat, Pixel, io::Reader as ImageReader};
+use image::{io::Reader as ImageReader, DynamicImage, ImageFormat, Pixel};
 use std::{io::Cursor, str::from_utf8};
 use wasm_minimal_protocol::*;
 
@@ -191,30 +191,20 @@ pub fn rotate270(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[wasm_func]
-pub fn transparency(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
-    let (mut img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let amount = bytes_to_int(amount)?;
-    let (width, height) = img.dimensions();
+pub fn transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String> {
+    let (img, _) = get_decoded_image_from_bytes(image_bytes)?;
+	let alpha = bytes_to_int(alpha)?;
+    let mut res = img.to_rgba8();
 
-    let res = img
-        .as_mut_rgba8()
-        .ok_or("Failed to convert image to RGBA8")?;
-
-    for y in 0..height {
-        for x in 0..width {
-            let pixel_color = res.get_pixel_mut(x, y);
-            pixel_color.apply_with_alpha(|rgb| rgb, |_| amount);
+    for y in 0..res.height() {
+        for x in 0..res.width() {
+            let pixel = res.get_pixel_mut(x, y);
+            pixel.apply_with_alpha(|ch| ch, |_| alpha);
         }
     }
 
-    match format {
-        ImageFormat::Png => {}
-        _ => {
-            format = ImageFormat::Png;
-        }
-    }
     let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
+    res.write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
 
     Ok(bytes)
