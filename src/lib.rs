@@ -134,63 +134,6 @@ pub fn fliph(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[wasm_func]
-pub fn rotate90(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let res = img.rotate90();
-
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
-    }
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
-}
-
-#[wasm_func]
-pub fn rotate180(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let res = img.rotate180();
-
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
-    }
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
-}
-
-#[wasm_func]
-pub fn rotate270(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let res = img.rotate270();
-
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
-    }
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
-}
-
-#[wasm_func]
 pub fn transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String> {
     let (img, _) = get_decoded_image_from_bytes(image_bytes)?;
 	let alpha = bytes_to_int(alpha)?;

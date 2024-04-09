@@ -79,42 +79,6 @@ Example usage:
     )
   )
 
-- `rotate90(imagebytes)`: rotate the image by 90° clockwise
-
-  Example Usage:
-
-  ```typst
-  #let pl = plugin("gray_ness.wasm")
-  #image.decode(
-    pl.rotate90(
-      read("example.jpg",encoding: none)
-    )
-  )
-
-- `rotate180(imagebytes)`: rotate the image by 180°
-  
-  Example Usage:
-
-  ```typst
-  #let pl = plugin("gray_ness.wasm")
-  #image.decode(
-    pl.rotate180(
-      read("example.jpg",encoding: none)
-    )
-  )
-
-- `rotate270(imagebytes)`: rotate the image by 270° clockwise
-  
-  Example Usage:
-
-  ```typst
-  #let pl = plugin("gray_ness.wasm")
-  #image.decode(
-    pl.rotate90(
-      read("example.jpg",encoding: none)
-    )
-  )
-
 - `flipv(imagebytes)`: flip the image vertically
   
   Example Usage:
@@ -148,7 +112,7 @@ Example usage:
   #image.decode(
     pl.transparency(
       read("example.jpg",encoding: none), //formats without transparency support will be converted to PNG
-	  bytes("128") //50% transparent
+   bytes("128") //50% transparent
     )
   )
 
