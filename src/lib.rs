@@ -28,12 +28,11 @@ pub fn grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 pub fn convert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
 
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
+    if !matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        format = ImageFormat::Png;
     }
 
     let mut bytes: Vec<u8> = Vec::new();
@@ -136,7 +135,7 @@ pub fn fliph(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 #[wasm_func]
 pub fn transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String> {
     let (img, _) = get_decoded_image_from_bytes(image_bytes)?;
-	let alpha = bytes_to_int(alpha)?;
+    let alpha = bytes_to_int(alpha)?;
     let mut res = img.to_rgba8();
 
     for y in 0..res.height() {

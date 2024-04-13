@@ -151,8 +151,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "gray_ness"
-version = "0.1.0"
+name = "grayness"
+version = "0.1.1"
 dependencies = [
  "image",
  "wasm-minimal-protocol",
