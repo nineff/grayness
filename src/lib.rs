@@ -1,6 +1,7 @@
 use image::{io::Reader as ImageReader, DynamicImage, ImageFormat, Pixel};
 use std::{io::Cursor, str::from_utf8};
 use wasm_minimal_protocol::*;
+use xmltree::{Element, XMLNode};
 
 initiate_protocol!();
 
@@ -22,6 +23,54 @@ pub fn grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
 
     Ok(bytes)
+}
+
+#[wasm_func]
+fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let mut svg_elem =
+        Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
+
+    //create a filter element with a colormatrix
+    let mut filter_elem = Element::new("filter");
+    filter_elem
+        .attributes
+        .insert("id".into(), "TypstGrayscaleFilter".into());
+    let mut colormatrix_elem = Element::new("feColorMatrix");
+    colormatrix_elem
+        .attributes
+        .insert("type".into(), "matrix".into());
+    colormatrix_elem.attributes.insert(
+        "values".into(),
+        "0.3333 0.3333 0.3333 0 0 0.3333 0.3333 0.3333 0 0 0.3333 0.3333 0.3333 0 0 0 0 0 1 0"
+            .into(), //see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feColorMatrix
+    );
+
+    filter_elem
+        .children
+        .push(XMLNode::Element(colormatrix_elem));
+
+    //wrap all existing elements in a new group with the filter applied
+    let mut group_element = Element::new("g");
+    group_element
+        .attributes
+        .insert("filter".into(), "url(#TypstGrayscaleFilter)".into());
+
+    for child in svg_elem.children {
+        if let XMLNode::Element(elem) = child {
+            group_element.children.push(XMLNode::Element(elem));
+        }
+    }
+
+    svg_elem.children = vec![XMLNode::Element(group_element)];
+
+    svg_elem.children.insert(0, XMLNode::Element(filter_elem));
+
+    let mut svg_output = Vec::new();
+
+    svg_elem
+        .write(&mut svg_output)
+        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
+    Ok(svg_output)
 }
 
 #[wasm_func]
