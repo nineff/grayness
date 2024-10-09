@@ -61,9 +61,11 @@ fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
         }
     }
 
-    svg_elem.children = vec![XMLNode::Element(group_element)];
-
-    svg_elem.children.insert(0, XMLNode::Element(filter_elem));
+    //add filter and replace existing children with new group
+    svg_elem.children = vec![
+        XMLNode::Element(filter_elem),
+        XMLNode::Element(group_element),
+    ];
 
     let mut svg_output = Vec::new();
 
