@@ -1,6 +1,7 @@
 use image::{io::Reader as ImageReader, DynamicImage, ImageFormat, Pixel};
 use std::{io::Cursor, str::from_utf8};
 use wasm_minimal_protocol::*;
+use xmltree::{Element, XMLNode};
 
 initiate_protocol!();
 
@@ -25,15 +26,64 @@ pub fn grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[wasm_func]
+fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let mut svg_elem =
+        Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
+
+    //create a filter element with a colormatrix
+    let mut filter_elem = Element::new("filter");
+    filter_elem
+        .attributes
+        .insert("id".into(), "TypstGrayscaleFilter".into());
+    let mut colormatrix_elem = Element::new("feColorMatrix");
+    colormatrix_elem
+        .attributes
+        .insert("type".into(), "matrix".into());
+    colormatrix_elem.attributes.insert(
+        "values".into(),
+        "0.3333 0.3333 0.3333 0 0 0.3333 0.3333 0.3333 0 0 0.3333 0.3333 0.3333 0 0 0 0 0 1 0"
+            .into(), //see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feColorMatrix
+    );
+
+    filter_elem
+        .children
+        .push(XMLNode::Element(colormatrix_elem));
+
+    //wrap all existing elements in a new group with the filter applied
+    let mut group_element = Element::new("g");
+    group_element
+        .attributes
+        .insert("filter".into(), "url(#TypstGrayscaleFilter)".into());
+
+    for child in svg_elem.children {
+        if let XMLNode::Element(elem) = child {
+            group_element.children.push(XMLNode::Element(elem));
+        }
+    }
+
+    //add filter and replace existing children with new group
+    svg_elem.children = vec![
+        XMLNode::Element(filter_elem),
+        XMLNode::Element(group_element),
+    ];
+
+    let mut svg_output = Vec::new();
+
+    svg_elem
+        .write(&mut svg_output)
+        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
+    Ok(svg_output)
+}
+
+#[wasm_func]
 pub fn convert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
 
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
+    if !matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        format = ImageFormat::Png;
     }
 
     let mut bytes: Vec<u8> = Vec::new();
@@ -136,7 +186,7 @@ pub fn fliph(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 #[wasm_func]
 pub fn transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String> {
     let (img, _) = get_decoded_image_from_bytes(image_bytes)?;
-	let alpha = bytes_to_int(alpha)?;
+    let alpha = bytes_to_int(alpha)?;
     let mut res = img.to_rgba8();
 
     for y in 0..res.height() {
