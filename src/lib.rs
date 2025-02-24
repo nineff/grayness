@@ -1,5 +1,5 @@
 use image::{io::Reader as ImageReader, DynamicImage, ImageFormat, Pixel};
-use std::{io::Cursor, str::from_utf8};
+use std::{io::Cursor, str::from_utf8, u8};
 use wasm_minimal_protocol::*;
 use xmltree::{Element, XMLNode};
 
@@ -10,12 +10,11 @@ pub fn grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
     let res = img.grayscale();
 
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
+    if !matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        format = ImageFormat::Png;
     }
 
     let mut bytes: Vec<u8> = Vec::new();
@@ -100,20 +99,35 @@ pub fn crop(
     start_y: &[u8],
     width: &[u8],
     height: &[u8],
+    mode: &[u8],
 ) -> Result<Vec<u8>, String> {
-    let start_x = bytes_to_int(start_x)?;
-    let start_y = bytes_to_int(start_y)?;
-    let width = bytes_to_int(width)?;
-    let height = bytes_to_int(height)?;
+    let start_x = u32::from_le_bytes(
+        start_x
+            .try_into()
+            .map_err(|e| format!("could not convert bytes to int: {e:?}"))?,
+    );
+    let start_y = u32::from_le_bytes(
+        start_y
+            .try_into()
+            .map_err(|e| format!("could not convert bytes to int: {e:?}"))?,
+    );
+    let mut width: f32 = utf8bytes_to_number(width)?;
+    let mut height: f32 = utf8bytes_to_number(height)?;
     let (mut img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let res = img.crop(start_x, start_y, width, height);
 
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
+    if *mode.first().ok_or("Mode is not set".to_string())? == 1 {
+        let original_height = img.height();
+        let original_width = img.width();
+        width *= original_width as f32;
+        height *= original_height as f32;
+    }
+    let res = img.crop(start_x, start_y, width as _, height as _);
+
+    if !matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        format = ImageFormat::Png;
     }
 
     let mut bytes: Vec<u8> = Vec::new();
@@ -126,56 +140,16 @@ pub fn crop(
 #[wasm_func]
 pub fn blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
     let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let sigma = bytes_to_int(sigma)?;
+    let sigma = utf8bytes_to_number(sigma)?;
     let res = img.blur(sigma);
 
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
+    if !matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        format = ImageFormat::Png;
     }
 
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
-}
-
-#[wasm_func]
-pub fn flipv(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let res = img.flipv();
-
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
-    }
-
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
-}
-
-#[wasm_func]
-pub fn fliph(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let res = img.fliph();
-
-    match format {
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif => { // Do nothing
-        }
-        _ => {
-            format = ImageFormat::Png;
-        }
-    }
     let mut bytes: Vec<u8> = Vec::new();
     res.write_to(&mut Cursor::new(&mut bytes), format)
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
@@ -186,7 +160,7 @@ pub fn fliph(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 #[wasm_func]
 pub fn transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String> {
     let (img, _) = get_decoded_image_from_bytes(image_bytes)?;
-    let alpha = bytes_to_int(alpha)?;
+    let alpha = utf8bytes_to_number(alpha)?;
     let mut res = img.to_rgba8();
 
     for y in 0..res.height() {
@@ -203,7 +177,74 @@ pub fn transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
     Ok(bytes)
 }
 
-fn bytes_to_int<T>(bytes: &[u8]) -> Result<T, String>
+#[wasm_func]
+pub fn invert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let (mut img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    img.invert();
+
+    if !matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        format = ImageFormat::Png;
+    }
+
+    let mut bytes: Vec<u8> = Vec::new();
+    img.write_to(&mut Cursor::new(&mut bytes), format)
+        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
+
+    Ok(bytes)
+}
+
+#[wasm_func]
+pub fn brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
+    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let amount = i32::from_le_bytes(
+        amount
+            .try_into()
+            .map_err(|e| format!("could not convert bytes to int: {e:?}"))?,
+    );
+    let res = img.brighten(amount);
+
+    if !matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        format = ImageFormat::Png;
+    }
+
+    let mut bytes: Vec<u8> = Vec::new();
+    res.write_to(&mut Cursor::new(&mut bytes), format)
+        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
+
+    Ok(bytes)
+}
+
+#[wasm_func]
+pub fn huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
+    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let amount = i32::from_le_bytes(
+        amount
+            .try_into()
+            .map_err(|e| format!("could not convert bytes to int: {e:?}"))?,
+    );
+    let res = img.huerotate(amount);
+
+    if !matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        format = ImageFormat::Png;
+    }
+
+    let mut bytes: Vec<u8> = Vec::new();
+    res.write_to(&mut Cursor::new(&mut bytes), format)
+        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
+
+    Ok(bytes)
+}
+
+fn utf8bytes_to_number<T>(bytes: &[u8]) -> Result<T, String>
 where
     T: std::str::FromStr + std::fmt::Debug,
     T::Err: std::fmt::Debug,
@@ -211,7 +252,7 @@ where
     match from_utf8(bytes) {
         Ok(input) => input
             .parse()
-            .map_err(|e| format!("String could not be parsed as int: {e:?}")),
+            .map_err(|e| format!("String '{input}' could not be parsed as number: {e:?}")),
         Err(e) => Err(format!("Invalid UTF8: {e:?}")),
     }
 }
@@ -219,8 +260,8 @@ where
 fn get_decoded_image_from_bytes(bytes: &[u8]) -> Result<(DynamicImage, ImageFormat), String> {
     let img_r = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
-        .map_err(|e| format!("Could not guess image format: {e:?}"))?;
-    let format = img_r.format().ok_or("No Format".to_string())?;
+        .map_err(|e| format!("Guessing the image format failed: {e:?}"))?;
+    let format = img_r.format().ok_or("Unknown image format".to_string())?;
     let decoded = img_r
         .decode()
         .map_err(|e| format!("Could not decode image data: {e:?}"))?;
