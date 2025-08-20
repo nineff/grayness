@@ -1,6 +1,6 @@
 [package]
 name = "grayness"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 authors = ["Nikolai Neff-Sarnow"]
 description = "This is a proof of concept typst wasm-plugin to allow simple image editing functions from within typst, written in Rust."
@@ -20,6 +20,6 @@ xmltree = "0.11.0"
 [profile.release]
 lto = true        # Enable link-time optimization
 strip = true      # Strip symbols from binary
-opt-level = 3     # Optimize for speed
+opt-level = 'z'   # Optimize for size
 codegen-units = 1 # Reduce number of codegen units to increase optimizations
 panic = 'abort'   # Abort on panic

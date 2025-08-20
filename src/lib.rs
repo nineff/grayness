@@ -1,4 +1,6 @@
-use image::{DynamicImage, ImageFormat, Pixel, io::Reader as ImageReader};
+use image::{
+    DynamicImage, GenericImageView, ImageFormat, Pixel, RgbaImage, io::Reader as ImageReader,
+};
 use std::io::Cursor;
 use wasm_minimal_protocol::*;
 use xmltree::{Element, XMLNode};
@@ -87,6 +89,58 @@ pub fn convert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 
     let mut bytes: Vec<u8> = Vec::new();
     img.write_to(&mut Cursor::new(&mut bytes), format)
+        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
+
+    Ok(bytes)
+}
+
+#[wasm_func]
+pub fn mask(
+    target_image_bytes: &[u8],
+    mask_image_bytges: &[u8],
+    use_alpha: &[u8],
+) -> Result<Vec<u8>, String> {
+    let use_alpha = !use_alpha.is_empty() && use_alpha[0] != 0;
+    let (targetimg, mut targetformat) = get_decoded_image_from_bytes(target_image_bytes)?;
+    let (mut mask, _) = get_decoded_image_from_bytes(mask_image_bytges)?;
+
+    let (target_width, target_height) = targetimg.dimensions();
+    if mask.dimensions() != targetimg.dimensions() {
+        mask = mask.resize_exact(
+            target_width,
+            target_height,
+            image::imageops::FilterType::Nearest,
+        );
+    }
+
+    let mut output = RgbaImage::new(target_width, target_height);
+
+    for y in 0..target_height {
+        for x in 0..target_width {
+            let mut pixel = targetimg.get_pixel(x, y);
+            let mask_pixel = mask.get_pixel(x, y);
+            let target_alpha = pixel[3] as f32 / 255.0;
+            let mask_alpha = if use_alpha {
+                mask_pixel[3] as f32 / 255.0
+            } else {
+                mask_pixel.to_luma()[0] as f32 / 255.0
+            };
+            let new_alpha = (target_alpha * mask_alpha * 255.0).round() as u8;
+            pixel[3] = new_alpha;
+            output.put_pixel(x, y, pixel);
+        }
+    }
+
+    if !matches!(
+        targetformat,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
+    ) {
+        targetformat = ImageFormat::Png;
+    }
+
+    let mut bytes: Vec<u8> = Vec::new();
+    output
+        .write_to(&mut Cursor::new(&mut bytes), targetformat)
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
 
     Ok(bytes)
