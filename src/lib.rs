@@ -101,7 +101,7 @@ pub fn mask(
     use_alpha: &[u8],
 ) -> Result<Vec<u8>, String> {
     let use_alpha = !use_alpha.is_empty() && use_alpha[0] != 0;
-    let (targetimg, mut targetformat) = get_decoded_image_from_bytes(target_image_bytes)?;
+    let (targetimg, _) = get_decoded_image_from_bytes(target_image_bytes)?;
     let (mut mask, _) = get_decoded_image_from_bytes(mask_image_bytges)?;
 
     let (target_width, target_height) = targetimg.dimensions();
@@ -131,16 +131,9 @@ pub fn mask(
         }
     }
 
-    if !matches!(
-        targetformat,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
-    ) {
-        targetformat = ImageFormat::Png;
-    }
-
     let mut bytes: Vec<u8> = Vec::new();
     output
-        .write_to(&mut Cursor::new(&mut bytes), targetformat)
+        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
 
     Ok(bytes)

@@ -1,6 +1,6 @@
 [package]
 name = "grayness"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 authors = ["Nikolai Neff-Sarnow"]
 description = "This is a proof of concept typst wasm-plugin to allow simple image editing functions from within typst, written in Rust."
