@@ -17,7 +17,7 @@ You can also use this plugin directly, e.g. if you have compiled the wasm binary
 ```typst
 #let plg = plugin("grayness.wasm")
 #let imagedata = read("path-to-your-picture.jpg", encoding: none)
-#image(plg.grayscale(imagebytes))
+#image(plg.grayscale(imagedata))
 ```
 
 ## Compile
