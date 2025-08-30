@@ -6,13 +6,19 @@ It uses the [wasm-minimal-protocol](https://github.com/astrale-sharp/wasm-minima
 ## Usage
 The simplest way to use this plugin is to import the package grayness into your typst code and use it's wrapper functions:
 ```typst
-#import "@preview/grayness:0.3.0":*
+#import "@preview/grayness:0.4.0":*
 #let imagedata = read("path-to-your-picture.jpg", encoding: none)
 #image-grayscale(imagedata)
 ```
 The [manual](https://github.com/typst/packages/blob/main/packages/preview/grayness/0.3.0/manual.pdf) provides further details.
 
 You can also use this plugin directly, e.g. if you have compiled the wasm binary yourself.
+
+```typst
+#let plg = plugin("grayness.wasm")
+#let imagedata = read("path-to-your-picture.jpg", encoding: none)
+#image(plg.grayscale(imagebytes))
+```
 
 ## Compile
 
