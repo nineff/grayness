@@ -1,6 +1,6 @@
 # Grayness
 
-This is a proof of concept Typst wasm-plugin to allow simple image editing functions from within Typst, written in Rust.
+This is a proof of concept [Typst](https://typst.app/) wasm-plugin to allow simple image editing functions from within Typst, written in Rust.
 It uses the [wasm-minimal-protocol](https://github.com/astrale-sharp/wasm-minimal-protocol) crate to define the plugin functions. The image editing functionality is provided by the [image](https://crates.io/crates/image) crate.
 
 ## Usage
