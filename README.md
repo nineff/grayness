@@ -4,7 +4,7 @@ This is a proof of concept [Typst](https://typst.app/) wasm-plugin to allow simp
 It uses the [wasm-minimal-protocol](https://github.com/astrale-sharp/wasm-minimal-protocol) crate to define the plugin functions. The image editing functionality is provided by the [image](https://crates.io/crates/image) crate.
 
 ## Usage
-The simplest way to use this plugin is to import the package grayness into your typst code and use it's wrapper functions:
+The simplest way to use this plugin is to import the package grayness from [Typst Universe](https://typst.app/universe/package/grayness) into your typst code and use it's wrapper functions:
 ```typst
 #import "@preview/grayness:0.4.0":*
 #let imagedata = read("path-to-your-picture.jpg", encoding: none)
