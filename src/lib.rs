@@ -2,40 +2,45 @@ use image::{
     DynamicImage, GenericImageView, ImageFormat, Pixel, RgbaImage, io::Reader as ImageReader,
 };
 use std::io::Cursor;
-use wasm_minimal_protocol::*;
+use uuid::Uuid;
+use wasm_minimal_protocol::{initiate_protocol, wasm_func};
 use xmltree::{Element, XMLNode};
 
 initiate_protocol!();
 
-#[wasm_func]
-pub fn grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
-    let res = img.grayscale();
+mod raster;
+mod vector;
 
-    if !matches!(
-        format,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
-    ) {
-        format = ImageFormat::Png;
-    }
+fn write_image_buffer(img: &DynamicImage, format: ImageFormat) -> Result<Vec<u8>, String> {
+    let targetformat = match format {
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif | ImageFormat::WebP => format,
+        _ => ImageFormat::Png,
+    };
 
     let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
+    img.write_to(&mut Cursor::new(&mut bytes), targetformat)
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
 
     Ok(bytes)
 }
 
 #[wasm_func]
+pub fn grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let (img, format) = get_decoded_image_from_bytes(image_bytes)?;
+    let res = img.grayscale();
+
+    write_image_buffer(&res, format)
+}
+
+#[wasm_func]
 fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let mut svg_elem =
+    let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
 
     //create a filter element with a colormatrix
+    let id = Uuid::new_v4();
     let mut filter_elem = Element::new("filter");
-    filter_elem
-        .attributes
-        .insert("id".into(), "TypstSVGFilter".into());
+    filter_elem.attributes.insert("id".into(), id.into());
     let mut colormatrix_elem = Element::new("feColorMatrix");
     colormatrix_elem
         .attributes
@@ -45,16 +50,23 @@ fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
         "0.3333 0.3333 0.3333 0 0 0.3333 0.3333 0.3333 0 0 0.3333 0.3333 0.3333 0 0 0 0 0 1 0"
             .into(), //see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feColorMatrix
     );
-
     filter_elem
         .children
         .push(XMLNode::Element(colormatrix_elem));
 
+    add_svg_filter(svg_elem, id, filter_elem)
+}
+
+fn add_svg_filter(
+    mut svg_elem: Element,
+    id: Uuid,
+    filter_elem: Element,
+) -> Result<Vec<u8>, String> {
     //wrap all existing elements in a new group with the filter applied
     let mut group_element = Element::new("g");
     group_element
         .attributes
-        .insert("filter".into(), "url(#TypstSVGFilter)".into());
+        .insert("filter".into(), format!("url(#{id})"));
 
     for child in svg_elem.children {
         if let XMLNode::Element(elem) = child {
@@ -78,20 +90,9 @@ fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 
 #[wasm_func]
 pub fn convert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let (img, format) = get_decoded_image_from_bytes(image_bytes)?;
 
-    if !matches!(
-        format,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
-    ) {
-        format = ImageFormat::Png;
-    }
-
-    let mut bytes: Vec<u8> = Vec::new();
-    img.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
+    write_image_buffer(&img, format)
 }
 
 #[wasm_func]
@@ -119,12 +120,15 @@ pub fn mask(
         for x in 0..target_width {
             let mut pixel = targetimg.get_pixel(x, y);
             let mask_pixel = mask.get_pixel(x, y);
-            let target_alpha = pixel[3] as f32 / 255.0;
+            let target_alpha = f32::from(pixel[3]) / 255.0;
             let mask_alpha = if use_alpha {
-                mask_pixel[3] as f32 / 255.0
+                f32::from(mask_pixel[3]) / 255.0
             } else {
-                mask_pixel.to_luma()[0] as f32 / 255.0
+                f32::from(mask_pixel.to_luma()[0]) / 255.0
             };
+
+            //pixel values are always positive, no precision is lost since the floats were only intermediate anyway.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let new_alpha = (target_alpha * mask_alpha * 255.0).round() as u8;
             pixel[3] = new_alpha;
             output.put_pixel(x, y, pixel);
@@ -133,7 +137,7 @@ pub fn mask(
 
     let mut bytes: Vec<u8> = Vec::new();
     output
-        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png) //Always use PNG for its alpha channel
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
 
     Ok(bytes)
@@ -167,21 +171,10 @@ pub fn crop(
             .try_into()
             .map_err(|e| format!("could not convert bytes to int: {e:?}"))?,
     );
-    let (mut img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let (mut img, format) = get_decoded_image_from_bytes(image_bytes)?;
     let res = img.crop(start_x, start_y, width, height);
 
-    if !matches!(
-        format,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
-    ) {
-        format = ImageFormat::Png;
-    }
-
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
+    write_image_buffer(&res, format)
 }
 
 #[wasm_func]
@@ -233,7 +226,7 @@ fn svg_crop(
 
 #[wasm_func]
 pub fn blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let (img, format) = get_decoded_image_from_bytes(image_bytes)?;
     let sigma = f32::from_le_bytes(
         sigma
             .try_into()
@@ -241,23 +234,12 @@ pub fn blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
     );
     let res = img.blur(sigma);
 
-    if !matches!(
-        format,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
-    ) {
-        format = ImageFormat::Png;
-    }
-
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
+    write_image_buffer(&res, format)
 }
 
 #[wasm_func]
 fn svg_blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
-    let mut svg_elem =
+    let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
 
     let sigma = f32::from_le_bytes(
@@ -267,10 +249,9 @@ fn svg_blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
     );
 
     //create a gaussian blur filter
+    let id = Uuid::new_v4();
     let mut filter_elem = Element::new("filter");
-    filter_elem
-        .attributes
-        .insert("id".into(), "TypstSVGFilter".into());
+    filter_elem.attributes.insert("id".into(), id.into());
     let mut fe_gaussian_blur = Element::new("feGaussianBlur");
     fe_gaussian_blur
         .attributes
@@ -280,30 +261,7 @@ fn svg_blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_gaussian_blur));
 
-    //wrap all existing elements in a new group with the filter applied
-    let mut group_element = Element::new("g");
-    group_element
-        .attributes
-        .insert("filter".into(), "url(#TypstSVGFilter)".into());
-
-    for child in svg_elem.children {
-        if let XMLNode::Element(elem) = child {
-            group_element.children.push(XMLNode::Element(elem));
-        }
-    }
-
-    //add filter and replace existing children with new group
-    svg_elem.children = vec![
-        XMLNode::Element(filter_elem),
-        XMLNode::Element(group_element),
-    ];
-
-    let mut svg_output = Vec::new();
-
-    svg_elem
-        .write(&mut svg_output)
-        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
-    Ok(svg_output)
+    add_svg_filter(svg_elem, id, filter_elem)
 }
 
 #[wasm_func]
@@ -324,7 +282,7 @@ pub fn transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
     }
 
     let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+    res.write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png) //Always use PNG for its alpha channel
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
 
     Ok(bytes)
@@ -332,7 +290,7 @@ pub fn transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
 
 #[wasm_func]
 fn svg_transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String> {
-    let mut svg_elem =
+    let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
 
     let alpha = f32::from_le_bytes(
@@ -342,10 +300,9 @@ fn svg_transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
     );
 
     //create a component transfer filter for the alpha channel
+    let id = Uuid::new_v4();
     let mut filter_elem = Element::new("filter");
-    filter_elem
-        .attributes
-        .insert("id".into(), "TypstSVGFilter".into());
+    filter_elem.attributes.insert("id".into(), id.into());
     let mut fe_component_transfer = Element::new("feComponentTransfer");
     let mut fe_func_a = Element::new("feFuncA");
     fe_func_a.attributes.insert("type".into(), "linear".into());
@@ -361,61 +318,26 @@ fn svg_transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    //wrap all existing elements in a new group with the filter applied
-    let mut group_element = Element::new("g");
-    group_element
-        .attributes
-        .insert("filter".into(), "url(#TypstSVGFilter)".into());
-
-    for child in svg_elem.children {
-        if let XMLNode::Element(elem) = child {
-            group_element.children.push(XMLNode::Element(elem));
-        }
-    }
-
-    //add filter and replace existing children with new group
-    svg_elem.children = vec![
-        XMLNode::Element(filter_elem),
-        XMLNode::Element(group_element),
-    ];
-
-    let mut svg_output = Vec::new();
-
-    svg_elem
-        .write(&mut svg_output)
-        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
-    Ok(svg_output)
+    add_svg_filter(svg_elem, id, filter_elem)
 }
 
 #[wasm_func]
 pub fn invert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let (mut img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let (mut img, format) = get_decoded_image_from_bytes(image_bytes)?;
     img.invert();
 
-    if !matches!(
-        format,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
-    ) {
-        format = ImageFormat::Png;
-    }
-
-    let mut bytes: Vec<u8> = Vec::new();
-    img.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
+    write_image_buffer(&img, format)
 }
 
 #[wasm_func]
 fn svg_invert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let mut svg_elem =
+    let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
 
     //create a component transfer filter for the RGB channels with invertion table
+    let id = Uuid::new_v4();
     let mut filter_elem = Element::new("filter");
-    filter_elem
-        .attributes
-        .insert("id".into(), "TypstSVGFilter".into());
+    filter_elem.attributes.insert("id".into(), id.into());
     filter_elem
         .attributes
         .insert("style".into(), "color-interpolation-filters:sRGB".into());
@@ -450,35 +372,12 @@ fn svg_invert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    //wrap all existing elements in a new group with the filter applied
-    let mut group_element = Element::new("g");
-    group_element
-        .attributes
-        .insert("filter".into(), "url(#TypstSVGFilter)".into());
-
-    for child in svg_elem.children {
-        if let XMLNode::Element(elem) = child {
-            group_element.children.push(XMLNode::Element(elem));
-        }
-    }
-
-    //add filter and replace existing children with new group
-    svg_elem.children = vec![
-        XMLNode::Element(filter_elem),
-        XMLNode::Element(group_element),
-    ];
-
-    let mut svg_output = Vec::new();
-
-    svg_elem
-        .write(&mut svg_output)
-        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
-    Ok(svg_output)
+    add_svg_filter(svg_elem, id, filter_elem)
 }
 
 #[wasm_func]
 pub fn brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let (img, format) = get_decoded_image_from_bytes(image_bytes)?;
     let amount = i32::from_le_bytes(
         amount
             .try_into()
@@ -486,23 +385,12 @@ pub fn brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
     );
     let res = img.brighten(amount);
 
-    if !matches!(
-        format,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
-    ) {
-        format = ImageFormat::Png;
-    }
-
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
+    write_image_buffer(&res, format)
 }
 
 #[wasm_func]
 fn svg_brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
-    let mut svg_elem =
+    let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
 
     let amount = f32::from_le_bytes(
@@ -512,10 +400,9 @@ fn svg_brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
     );
 
     //create a component transfer filter for the RGB channels
+    let id = Uuid::new_v4();
     let mut filter_elem = Element::new("filter");
-    filter_elem
-        .attributes
-        .insert("id".into(), "TypstSVGFilter".into());
+    filter_elem.attributes.insert("id".into(), id.into());
     filter_elem
         .attributes
         .insert("style".into(), "color-interpolation-filters:sRGB".into());
@@ -553,35 +440,12 @@ fn svg_brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    //wrap all existing elements in a new group with the filter applied
-    let mut group_element = Element::new("g");
-    group_element
-        .attributes
-        .insert("filter".into(), "url(#TypstSVGFilter)".into());
-
-    for child in svg_elem.children {
-        if let XMLNode::Element(elem) = child {
-            group_element.children.push(XMLNode::Element(elem));
-        }
-    }
-
-    //add filter and replace existing children with new group
-    svg_elem.children = vec![
-        XMLNode::Element(filter_elem),
-        XMLNode::Element(group_element),
-    ];
-
-    let mut svg_output = Vec::new();
-
-    svg_elem
-        .write(&mut svg_output)
-        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
-    Ok(svg_output)
+    add_svg_filter(svg_elem, id, filter_elem)
 }
 
 #[wasm_func]
 pub fn huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
-    let (img, mut format) = get_decoded_image_from_bytes(image_bytes)?;
+    let (img, format) = get_decoded_image_from_bytes(image_bytes)?;
     let amount = i32::from_le_bytes(
         amount
             .try_into()
@@ -589,23 +453,12 @@ pub fn huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
     );
     let res = img.huerotate(amount);
 
-    if !matches!(
-        format,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif
-    ) {
-        format = ImageFormat::Png;
-    }
-
-    let mut bytes: Vec<u8> = Vec::new();
-    res.write_to(&mut Cursor::new(&mut bytes), format)
-        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
-
-    Ok(bytes)
+    write_image_buffer(&res, format)
 }
 
 #[wasm_func]
 fn svg_huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
-    let mut svg_elem =
+    let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
 
     let amount = f32::from_le_bytes(
@@ -614,12 +467,11 @@ fn svg_huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
-    //create a gaussian blur filter
+    //create a Hue-rotating filter
+    let id = Uuid::new_v4();
     let mut filter_elem = Element::new("filter");
-    filter_elem
-        .attributes
-        .insert("id".into(), "TypstSVGFilter".into());
-    let mut fe_color_matrix = Element::new("feColorMatrix ");
+    filter_elem.attributes.insert("id".into(), id.into());
+    let mut fe_color_matrix = Element::new("feColorMatrix");
     fe_color_matrix
         .attributes
         .insert("type".into(), "hueRotate".into());
@@ -629,30 +481,7 @@ fn svg_huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
 
     filter_elem.children.push(XMLNode::Element(fe_color_matrix));
 
-    //wrap all existing elements in a new group with the filter applied
-    let mut group_element = Element::new("g");
-    group_element
-        .attributes
-        .insert("filter".into(), "url(#TypstSVGFilter)".into());
-
-    for child in svg_elem.children {
-        if let XMLNode::Element(elem) = child {
-            group_element.children.push(XMLNode::Element(elem));
-        }
-    }
-
-    //add filter and replace existing children with new group
-    svg_elem.children = vec![
-        XMLNode::Element(filter_elem),
-        XMLNode::Element(group_element),
-    ];
-
-    let mut svg_output = Vec::new();
-
-    svg_elem
-        .write(&mut svg_output)
-        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
-    Ok(svg_output)
+    add_svg_filter(svg_elem, id, filter_elem)
 }
 
 fn get_decoded_image_from_bytes(bytes: &[u8]) -> Result<(DynamicImage, ImageFormat), String> {

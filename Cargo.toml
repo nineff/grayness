@@ -1,6 +1,6 @@
 [package]
 name = "grayness"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 authors = ["Nikolai Neff-Sarnow"]
 description = "This is a proof of concept typst wasm-plugin to allow simple image editing functions from within typst, written in Rust."
@@ -14,8 +14,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 image = "0.24.0"
+uuid = { version = "1.18.1", features = ["js", "v4"] }
 wasm-minimal-protocol = "0.1.0"
-xmltree = "0.11.0"
+xmltree = "0.12.0"
 
 [profile.release]
 lto = true        # Enable link-time optimization
