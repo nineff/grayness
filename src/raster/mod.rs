@@ -2,9 +2,11 @@ use image::{
     DynamicImage, GenericImageView, ImageFormat, Pixel, RgbaImage, io::Reader as ImageReader,
 };
 use std::io::Cursor;
-use wasm_minimal_protocol::{initiate_protocol, wasm_func};
+use wasm_minimal_protocol::wasm_func;
 
-initiate_protocol!();
+use crate::__BytesOrResultBytes;
+use crate::__send_result_to_host;
+use crate::__write_args_to_buffer;
 
 fn write_image_buffer(img: &DynamicImage, format: ImageFormat) -> Result<Vec<u8>, String> {
     let targetformat = match format {

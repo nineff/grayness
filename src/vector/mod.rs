@@ -1,10 +1,40 @@
-use uuid::Uuid;
-use wasm_minimal_protocol::{initiate_protocol, wasm_func};
+use wasm_minimal_protocol::wasm_func;
 use xmltree::{Element, XMLNode};
+
+use crate::__BytesOrResultBytes;
+use crate::__send_result_to_host;
+use crate::__write_args_to_buffer;
+
+static TYPST_FILTER_ID_PREFIX: &str = "Typst_Filter_ID_";
+
+fn next_filter_index(root: &Element) -> usize {
+    let mut max_n = 0;
+
+    for child in &root.children {
+        let XMLNode::Element(elem) = child else {
+            continue;
+        };
+
+        if elem.name != "g" {
+            continue;
+        }
+        let prefix = format!("url(#{TYPST_FILTER_ID_PREFIX}");
+        let suffix = ")";
+        if let Some(id) = elem.attributes.get("filter")
+            && let Some(rest) = id.strip_prefix(&prefix)
+            && let Some(num) = rest.strip_suffix(suffix)
+            && let Ok(n) = num.parse::<usize>()
+        {
+            max_n = max_n.max(n);
+        }
+    }
+
+    max_n + 1
+}
 
 fn add_svg_filter(
     mut svg_elem: Element,
-    id: Uuid,
+    id: &str,
     filter_elem: Element,
 ) -> Result<Vec<u8>, String> {
     //wrap all existing elements in a new group with the filter applied
@@ -33,17 +63,15 @@ fn add_svg_filter(
     Ok(svg_output)
 }
 
-initiate_protocol!();
-
 #[wasm_func]
 fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
-
+    let num = next_filter_index(&svg_elem);
     //create a filter element with a colormatrix
-    let id = Uuid::new_v4();
+    let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
-    filter_elem.attributes.insert("id".into(), id.into());
+    filter_elem.attributes.insert("id".into(), id.clone());
     let mut colormatrix_elem = Element::new("feColorMatrix");
     colormatrix_elem
         .attributes
@@ -57,7 +85,7 @@ fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(colormatrix_elem));
 
-    add_svg_filter(svg_elem, id, filter_elem)
+    add_svg_filter(svg_elem, &id, filter_elem)
 }
 
 #[wasm_func]
@@ -118,10 +146,11 @@ fn svg_blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
+    let num = next_filter_index(&svg_elem);
     //create a gaussian blur filter
-    let id = Uuid::new_v4();
+    let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
-    filter_elem.attributes.insert("id".into(), id.into());
+    filter_elem.attributes.insert("id".into(), id.clone());
     let mut fe_gaussian_blur = Element::new("feGaussianBlur");
     fe_gaussian_blur
         .attributes
@@ -131,7 +160,7 @@ fn svg_blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_gaussian_blur));
 
-    add_svg_filter(svg_elem, id, filter_elem)
+    add_svg_filter(svg_elem, &id, filter_elem)
 }
 
 #[wasm_func]
@@ -145,10 +174,11 @@ fn svg_transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
+    let num = next_filter_index(&svg_elem);
     //create a component transfer filter for the alpha channel
-    let id = Uuid::new_v4();
+    let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
-    filter_elem.attributes.insert("id".into(), id.into());
+    filter_elem.attributes.insert("id".into(), id.clone());
     let mut fe_component_transfer = Element::new("feComponentTransfer");
     let mut fe_func_a = Element::new("feFuncA");
     fe_func_a.attributes.insert("type".into(), "linear".into());
@@ -164,7 +194,7 @@ fn svg_transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    add_svg_filter(svg_elem, id, filter_elem)
+    add_svg_filter(svg_elem, &id, filter_elem)
 }
 
 #[wasm_func]
@@ -172,10 +202,11 @@ fn svg_invert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
 
-    //create a component transfer filter for the RGB channels with invertion table
-    let id = Uuid::new_v4();
+    let num = next_filter_index(&svg_elem);
+    //create a component transfer filter for the RGB channels with inversion table
+    let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
-    filter_elem.attributes.insert("id".into(), id.into());
+    filter_elem.attributes.insert("id".into(), id.clone());
     filter_elem
         .attributes
         .insert("style".into(), "color-interpolation-filters:sRGB".into());
@@ -210,7 +241,7 @@ fn svg_invert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    add_svg_filter(svg_elem, id, filter_elem)
+    add_svg_filter(svg_elem, &id, filter_elem)
 }
 
 #[wasm_func]
@@ -224,10 +255,11 @@ fn svg_brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
+    let num = next_filter_index(&svg_elem);
+    let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     //create a component transfer filter for the RGB channels
-    let id = Uuid::new_v4();
     let mut filter_elem = Element::new("filter");
-    filter_elem.attributes.insert("id".into(), id.into());
+    filter_elem.attributes.insert("id".into(), id.clone());
     filter_elem
         .attributes
         .insert("style".into(), "color-interpolation-filters:sRGB".into());
@@ -265,7 +297,7 @@ fn svg_brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    add_svg_filter(svg_elem, id, filter_elem)
+    add_svg_filter(svg_elem, &id, filter_elem)
 }
 
 #[wasm_func]
@@ -279,19 +311,20 @@ fn svg_huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
+    let num = next_filter_index(&svg_elem);
     //create a Hue-rotating filter
-    let id = Uuid::new_v4();
+    let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
-    filter_elem.attributes.insert("id".into(), id.into());
+    filter_elem.attributes.insert("id".into(), id.clone());
     let mut fe_color_matrix = Element::new("feColorMatrix");
     fe_color_matrix
         .attributes
         .insert("type".into(), "hueRotate".into());
     fe_color_matrix
         .attributes
-        .insert("values".into(), format!("{amount}deg"));
+        .insert("values".into(), format!("{amount}"));
 
     filter_elem.children.push(XMLNode::Element(fe_color_matrix));
 
-    add_svg_filter(svg_elem, id, filter_elem)
+    add_svg_filter(svg_elem, &id, filter_elem)
 }

@@ -7,20 +7,35 @@ description = "This is a proof of concept typst wasm-plugin to allow simple imag
 readme = "README.md"
 repository = "https://github.com/nineff/grayness"
 license = "Apache-2.0"
-categories = ["typst", "plugin", "image", "grayscale", "wasm"]
+categories = ["grayscale", "image", "plugin", "typst", "wasm"]
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-image = "0.24.0"
-uuid = { version = "1.18.1", features = ["js", "v4"] }
+image = { version = "0.24.0", default-features = false, features = [
+  "bmp",
+  "dds",
+  "dxt",
+  "farbfeld",
+  "gif",
+  "hdr",
+  "ico",
+  "jpeg",
+  "openexr",
+  "png",
+  "pnm",
+  "qoi",
+  "tga",
+  "tiff",
+  "webp"
+] }
 wasm-minimal-protocol = "0.1.0"
 xmltree = "0.12.0"
 
 [profile.release]
-lto = true        # Enable link-time optimization
-strip = true      # Strip symbols from binary
-opt-level = 'z'   # Optimize for size
-codegen-units = 1 # Reduce number of codegen units to increase optimizations
-panic = 'abort'   # Abort on panic
+opt-level = "z"  # Optimize for size
+strip = true  # Strip symbols from binary
+lto = "fat"  # Enable link-time optimization; see https://github.com/wasmi-labs/wasmi/blob/main/docs/usage.md
+panic = "abort"  # Abort on panic
+codegen-units = 1  # Reduce number of codegen units to increase optimizations

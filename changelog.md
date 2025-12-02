@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] 2025-11-26
+## [0.5.0] 2025-12-02
 
 ### Changed
 
@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- SVG Filters now use unique names and can therefore be chained together.
+- SVG Filters now use sequential names and can therefore be chained together.
 - Various Typos
+- SVG Hue-Rotation nolonger incorrectly specifies the amount as "deg"
 
 ## [0.4.1] 2025-08-20
 
