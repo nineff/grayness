@@ -1,18 +1,21 @@
 # Grayness
 
-This is a proof of concept [Typst](https://typst.app/) wasm-plugin to allow simple image editing functions from within Typst, written in Rust.
+This is a proof of concept [Typst](https://typst.app/) WASM-plugin to allow simple image editing functions from within Typst, written in Rust.
 It uses the [wasm-minimal-protocol](https://github.com/astrale-sharp/wasm-minimal-protocol) crate to define the plugin functions. The image editing functionality is provided by the [image](https://crates.io/crates/image) crate.
 
 ## Usage
+
 The simplest way to use this plugin is to import the package grayness from [Typst Universe](https://typst.app/universe/package/grayness) into your typst code and use it's wrapper functions:
+
 ```typst
 #import "@preview/grayness:0.4.0":*
 #let imagedata = read("path-to-your-picture.jpg", encoding: none)
 #image-grayscale(imagedata)
 ```
-The [manual](https://github.com/typst/packages/blob/main/packages/preview/grayness/0.3.0/manual.pdf) provides further details.
 
-You can also use this plugin directly, e.g. if you have compiled the wasm binary yourself.
+The [manual](doc/manual.pdf) provides further details.
+
+You can also use this plugin directly, e.g. if you have compiled the WASM binary yourself.
 
 ```typst
 #let plg = plugin("grayness.wasm")
