@@ -7,9 +7,10 @@ use crate::__write_args_to_buffer;
 
 static TYPST_FILTER_ID_PREFIX: &str = "Typst_Filter_ID_";
 
-fn next_filter_index(root: &Element) -> usize {
+fn get_next_filter_index(root: &Element) -> usize {
     let mut max_n = 0;
 
+    //look through every g element with a filter attribute matching the specified format and extract the maximum ID
     for child in &root.children {
         let XMLNode::Element(elem) = child else {
             continue;
@@ -67,7 +68,8 @@ fn add_svg_filter(
 fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
-    let num = next_filter_index(&svg_elem);
+    let num = get_next_filter_index(&svg_elem);
+
     //create a filter element with a colormatrix
     let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
@@ -75,11 +77,10 @@ fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut colormatrix_elem = Element::new("feColorMatrix");
     colormatrix_elem
         .attributes
-        .insert("type".into(), "matrix".into());
+        .insert("type".into(), "saturate".into());
     colormatrix_elem.attributes.insert(
         "values".into(),
-        "0.3333 0.3333 0.3333 0 0 0.3333 0.3333 0.3333 0 0 0.3333 0.3333 0.3333 0 0 0 0 0 1 0"
-            .into(), //see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feColorMatrix
+        "0.0".into(), //see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feColorMatrix
     );
     filter_elem
         .children
@@ -146,7 +147,7 @@ fn svg_blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
-    let num = next_filter_index(&svg_elem);
+    let num = get_next_filter_index(&svg_elem);
     //create a gaussian blur filter
     let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
@@ -174,7 +175,7 @@ fn svg_transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
-    let num = next_filter_index(&svg_elem);
+    let num = get_next_filter_index(&svg_elem);
     //create a component transfer filter for the alpha channel
     let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
@@ -202,7 +203,7 @@ fn svg_invert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let svg_elem =
         Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
 
-    let num = next_filter_index(&svg_elem);
+    let num = get_next_filter_index(&svg_elem);
     //create a component transfer filter for the RGB channels with inversion table
     let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
@@ -255,7 +256,7 @@ fn svg_brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
-    let num = next_filter_index(&svg_elem);
+    let num = get_next_filter_index(&svg_elem);
     let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     //create a component transfer filter for the RGB channels
     let mut filter_elem = Element::new("filter");
@@ -311,7 +312,7 @@ fn svg_huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
     );
 
-    let num = next_filter_index(&svg_elem);
+    let num = get_next_filter_index(&svg_elem);
     //create a Hue-rotating filter
     let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
     let mut filter_elem = Element::new("filter");
@@ -323,6 +324,133 @@ fn svg_huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
     fe_color_matrix
         .attributes
         .insert("values".into(), format!("{amount}"));
+
+    filter_elem.children.push(XMLNode::Element(fe_color_matrix));
+
+    add_svg_filter(svg_elem, &id, filter_elem)
+}
+
+#[wasm_func]
+#[allow(clippy::too_many_arguments)]
+fn svg_matrix(
+    image_bytes: &[u8],
+    m00: &[u8],
+    m01: &[u8],
+    m02: &[u8],
+    m03: &[u8],
+    m04: &[u8],
+    m10: &[u8],
+    m11: &[u8],
+    m12: &[u8],
+    m13: &[u8],
+    m14: &[u8],
+    m20: &[u8],
+    m21: &[u8],
+    m22: &[u8],
+    m23: &[u8],
+    m24: &[u8],
+    m30: &[u8],
+    m31: &[u8],
+    m32: &[u8],
+    m33: &[u8],
+    m34: &[u8],
+) -> Result<Vec<u8>, String> {
+    let m00 = f32::from_le_bytes(
+        m00.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m01 = f32::from_le_bytes(
+        m01.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m02 = f32::from_le_bytes(
+        m02.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m03 = f32::from_le_bytes(
+        m03.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m04 = f32::from_le_bytes(
+        m04.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m10 = f32::from_le_bytes(
+        m10.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m11 = f32::from_le_bytes(
+        m11.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m12 = f32::from_le_bytes(
+        m12.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m13 = f32::from_le_bytes(
+        m13.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m14 = f32::from_le_bytes(
+        m14.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m20 = f32::from_le_bytes(
+        m20.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m21 = f32::from_le_bytes(
+        m21.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m22 = f32::from_le_bytes(
+        m22.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m23 = f32::from_le_bytes(
+        m23.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m24 = f32::from_le_bytes(
+        m24.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m30 = f32::from_le_bytes(
+        m30.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m31 = f32::from_le_bytes(
+        m31.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m32 = f32::from_le_bytes(
+        m32.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m33 = f32::from_le_bytes(
+        m33.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m34 = f32::from_le_bytes(
+        m34.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+
+    let svg_elem =
+        Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
+
+    let num = get_next_filter_index(&svg_elem);
+    //create a Hue-rotating filter
+    let id = format!("{TYPST_FILTER_ID_PREFIX}{num}");
+    let mut filter_elem = Element::new("filter");
+    filter_elem.attributes.insert("id".into(), id.clone());
+    let mut fe_color_matrix = Element::new("feColorMatrix");
+    fe_color_matrix
+        .attributes
+        .insert("type".into(), "matrix".into());
+    fe_color_matrix
+        .attributes
+        .insert("values".into(), format!("{m00} {m01} {m02} {m03} {m04} {m10} {m11} {m12} {m13} {m14} {m20} {m21} {m22} {m23} {m24} {m30} {m31} {m32} {m33} {m34}"));
 
     filter_elem.children.push(XMLNode::Element(fe_color_matrix));
 

@@ -1,6 +1,4 @@
-use image::{
-    DynamicImage, GenericImageView, ImageFormat, Pixel, RgbaImage, io::Reader as ImageReader,
-};
+use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader, Pixel, RgbaImage};
 use std::io::Cursor;
 use wasm_minimal_protocol::wasm_func;
 
@@ -43,6 +41,26 @@ pub fn grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 pub fn convert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let (img, format) = get_decoded_image_from_bytes(image_bytes)?;
     write_image_buffer(&img, format)
+}
+
+#[wasm_func]
+pub fn decode(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let (img, _) = get_decoded_image_from_bytes(image_bytes)?;
+    let res = img.to_rgba8();
+    Ok(res.to_vec())
+}
+
+#[wasm_func]
+pub fn infos(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let (img, format) = get_decoded_image_from_bytes(image_bytes)?;
+    let (w, h) = img.dimensions();
+
+    Ok([
+        w.to_le_bytes().as_slice(),
+        h.to_le_bytes().as_slice(),
+        format!("{format:?}").as_bytes(),
+    ]
+    .concat())
 }
 
 #[wasm_func]
@@ -192,4 +210,139 @@ pub fn huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
     );
     let res = img.huerotate(amount);
     write_image_buffer(&res, format)
+}
+
+#[wasm_func]
+#[allow(clippy::too_many_arguments)]
+pub fn matrix(
+    image_bytes: &[u8],
+    m00: &[u8],
+    m01: &[u8],
+    m02: &[u8],
+    m03: &[u8],
+    m04: &[u8],
+    m10: &[u8],
+    m11: &[u8],
+    m12: &[u8],
+    m13: &[u8],
+    m14: &[u8],
+    m20: &[u8],
+    m21: &[u8],
+    m22: &[u8],
+    m23: &[u8],
+    m24: &[u8],
+    m30: &[u8],
+    m31: &[u8],
+    m32: &[u8],
+    m33: &[u8],
+    m34: &[u8],
+) -> Result<Vec<u8>, String> {
+    let (img, _format) = get_decoded_image_from_bytes(image_bytes)?;
+    let mut res = img.to_rgba8();
+
+    let m00 = f32::from_le_bytes(
+        m00.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m01 = f32::from_le_bytes(
+        m01.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m02 = f32::from_le_bytes(
+        m02.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m03 = f32::from_le_bytes(
+        m03.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m04 = f32::from_le_bytes(
+        m04.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m10 = f32::from_le_bytes(
+        m10.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m11 = f32::from_le_bytes(
+        m11.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m12 = f32::from_le_bytes(
+        m12.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m13 = f32::from_le_bytes(
+        m13.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m14 = f32::from_le_bytes(
+        m14.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m20 = f32::from_le_bytes(
+        m20.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m21 = f32::from_le_bytes(
+        m21.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m22 = f32::from_le_bytes(
+        m22.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m23 = f32::from_le_bytes(
+        m23.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m24 = f32::from_le_bytes(
+        m24.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m30 = f32::from_le_bytes(
+        m30.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m31 = f32::from_le_bytes(
+        m31.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m32 = f32::from_le_bytes(
+        m32.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m33 = f32::from_le_bytes(
+        m33.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+    let m34 = f32::from_le_bytes(
+        m34.try_into()
+            .map_err(|e| format!("could not convert bytes to float: {e:?}"))?,
+    );
+
+    for y in 0..res.height() {
+        for x in 0..res.width() {
+            let pixel = res.get_pixel_mut(x, y);
+            let r = f32::from(pixel[0]);
+            let g = f32::from(pixel[1]);
+            let b = f32::from(pixel[2]);
+            let a = f32::from(pixel[3]);
+
+            let nr = m00 * r + m01 * g + m02 * b + m03 * a + m04 * 255.0;
+            let ng = m10 * r + m11 * g + m12 * b + m13 * a + m14 * 255.0;
+
+            let nb = m20 * r + m21 * g + m22 * b + m23 * a + m24 * 255.0;
+            let na = m30 * r + m31 * g + m32 * b + m33 * a + m34 * 255.0;
+
+            pixel[0] = nr.clamp(0.0, 255.0) as u8;
+            pixel[1] = ng.clamp(0.0, 255.0) as u8;
+            pixel[2] = nb.clamp(0.0, 255.0) as u8;
+            pixel[3] = na.clamp(0.0, 255.0) as u8;
+        }
+    }
+    let mut bytes: Vec<u8> = Vec::new();
+    res.write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png) //Always use PNG for its alpha channel
+        .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
+    Ok(bytes)
 }
