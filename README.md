@@ -8,7 +8,7 @@ It uses the [wasm-minimal-protocol](https://github.com/astrale-sharp/wasm-minima
 The simplest way to use this plugin is to import the package grayness from [Typst Universe](https://typst.app/universe/package/grayness) into your typst code and use it's wrapper functions:
 
 ```typst
-#import "@preview/grayness:0.4.0":*
+#import "@preview/grayness:0.6.0":*
 #let imagedata = read("path-to-your-picture.jpg", encoding: none)
 #image-grayscale(imagedata)
 ```
