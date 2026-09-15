@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - bumped `wasm-minimal-protocol` to 0.2.1
 - updated readme
+- removed binary manual and linked to it in the readme
 
 ## [0.6.0] 2026-03-22
 
