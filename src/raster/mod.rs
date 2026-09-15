@@ -2,7 +2,7 @@ use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader, Pixel, Rgb
 use std::io::Cursor;
 use wasm_minimal_protocol::wasm_func;
 
-use crate::__BytesOrResultBytes;
+use crate::__ToResult;
 use crate::__send_result_to_host;
 use crate::__write_args_to_buffer;
 
@@ -329,20 +329,197 @@ pub fn matrix(
             let b = f32::from(pixel[2]);
             let a = f32::from(pixel[3]);
 
-            let nr = m00 * r + m01 * g + m02 * b + m03 * a + m04 * 255.0;
-            let ng = m10 * r + m11 * g + m12 * b + m13 * a + m14 * 255.0;
+            let new_r = m00 * r + m01 * g + m02 * b + m03 * a + m04 * 255.0;
+            let new_g = m10 * r + m11 * g + m12 * b + m13 * a + m14 * 255.0;
 
-            let nb = m20 * r + m21 * g + m22 * b + m23 * a + m24 * 255.0;
-            let na = m30 * r + m31 * g + m32 * b + m33 * a + m34 * 255.0;
+            let new_b = m20 * r + m21 * g + m22 * b + m23 * a + m24 * 255.0;
+            let new_a = m30 * r + m31 * g + m32 * b + m33 * a + m34 * 255.0;
 
-            pixel[0] = nr.clamp(0.0, 255.0) as u8;
-            pixel[1] = ng.clamp(0.0, 255.0) as u8;
-            pixel[2] = nb.clamp(0.0, 255.0) as u8;
-            pixel[3] = na.clamp(0.0, 255.0) as u8;
+            pixel[0] = new_r.clamp(0.0, 255.0) as u8;
+            pixel[1] = new_g.clamp(0.0, 255.0) as u8;
+            pixel[2] = new_b.clamp(0.0, 255.0) as u8;
+            pixel[3] = new_a.clamp(0.0, 255.0) as u8;
         }
     }
     let mut bytes: Vec<u8> = Vec::new();
     res.write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png) //Always use PNG for its alpha channel
         .map_err(|e| format!("Could not write image bytes to buffer: {e:?}"))?;
     Ok(bytes)
+}
+
+//#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use image::{EncodableLayout, codecs::png::PngEncoder};
+
+    const TESTIMAGE_PIXELS: [[[u8; 4]; 3]; 3] = [
+        [[0, 0, 0, 255], [128, 128, 128, 255], [255, 255, 255, 255]],
+        [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]],
+        [[255, 255, 0, 255], [255, 0, 255, 255], [0, 255, 255, 255]],
+    ];
+
+    fn create_png_encoded_test_image_bytes() -> Vec<u8> {
+        let mut img = RgbaImage::new(3, 3);
+
+        for (x, y, p) in img.enumerate_pixels_mut() {
+            p.0 = TESTIMAGE_PIXELS[y as usize][x as usize];
+        }
+
+        let mut c = Cursor::new(Vec::new());
+        let e = PngEncoder::new(&mut c);
+        img.write_with_encoder(e).unwrap();
+        c.into_inner()
+    }
+
+    #[test]
+    fn test_decode() {
+        let input = create_png_encoded_test_image_bytes();
+        let out = decode(&input).unwrap();
+        assert_eq!(out.len(), 3 * 3 * 4); //3x3 pixels with 4 bytes each
+        assert_eq!(out, TESTIMAGE_PIXELS.as_flattened().as_flattened());
+    }
+
+    #[test]
+    fn test_grayscale() {
+        let input_image = RgbaImage::from_vec(
+            3,
+            3,
+            decode(&create_png_encoded_test_image_bytes()).unwrap(),
+        )
+        .unwrap();
+        let output = RgbaImage::from_vec(
+            3,
+            3,
+            decode(
+                grayscale(&create_png_encoded_test_image_bytes())
+                    .unwrap()
+                    .as_slice(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        for pixel in output.pixels() {
+            //grayscaling should not affect alpha value
+            assert_eq!(pixel.alpha(), 255);
+            //each non-alpha channel should have the same value
+            assert_eq!(pixel[0], pixel[1]);
+            assert_eq!(pixel[1], pixel[2]);
+        }
+
+        //already gray pixels should remain unchanged
+        assert_eq!(input_image.get_pixel(0, 0), output.get_pixel(0, 0));
+        assert_eq!(input_image.get_pixel(1, 0), output.get_pixel(1, 0));
+        assert_eq!(input_image.get_pixel(2, 0), output.get_pixel(2, 0));
+
+        //colored pixels shoud change
+        assert_ne!(input_image, output);
+        assert_ne!(input_image.get_pixel(0, 1), output.get_pixel(0, 1));
+    }
+
+    #[test]
+    fn test_infos() {
+        let input = create_png_encoded_test_image_bytes();
+        let info = infos(&input).unwrap();
+
+        let w = u32::from_le_bytes(info[0..4].try_into().unwrap());
+        let h = u32::from_le_bytes(info[4..8].try_into().unwrap());
+        assert!(String::from_utf8(info[8..].into()).is_ok());
+        assert_eq!(w, 3);
+        assert_eq!(h, 3);
+    }
+
+    #[test]
+    fn test_invert() {
+        let input = create_png_encoded_test_image_bytes();
+        let out = invert(&input).unwrap();
+        let img = RgbaImage::from_vec(3, 3, decode(out.as_slice()).unwrap()).unwrap();
+
+        let p = img.get_pixel(0, 0).0;
+        //black turns to white
+        assert_eq!(p, [255, 255, 255, 255]);
+        //white turns to black
+        let p = img.get_pixel(2, 0).0;
+        assert_eq!(p, [0, 0, 0, 255]);
+
+        //double inversion is original
+        assert_eq!(input, invert(&invert(&input).unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_invalid_input() {
+        let bad = vec![1, 2, 3];
+        assert!(decode(&bad).is_err());
+        assert!(grayscale(&bad).is_err());
+    }
+
+    #[test]
+    fn test_crop() {
+        let input = create_png_encoded_test_image_bytes();
+
+        let out = crop(
+            &input,
+            &0u32.to_le_bytes(),
+            &0u32.to_le_bytes(),
+            &1u32.to_le_bytes(),
+            &1u32.to_le_bytes(),
+        )
+        .unwrap();
+
+        let img = decode(out.as_bytes()).unwrap();
+        //exactly one pixel
+        assert_eq!(img.len(), 4);
+        //the first one
+        assert_eq!(decode(&input).unwrap()[0], img[0]);
+    }
+
+    #[test]
+    fn test_matrix_identity() {
+        let input = create_png_encoded_test_image_bytes();
+
+        let one = 1.0f32.to_le_bytes();
+        let zero = 0.0f32.to_le_bytes();
+
+        let out = matrix(
+            &input, &one, &zero, &zero, &zero, &zero, &zero, &one, &zero, &zero, &zero, &zero,
+            &zero, &one, &zero, &zero, &zero, &zero, &zero, &one, &zero,
+        )
+        .unwrap();
+
+        assert_eq!(input, out);
+    }
+
+    #[test]
+    fn test_transparency() {
+        let input = create_png_encoded_test_image_bytes();
+        let out = transparency(&input, &[128]).unwrap();
+        let img = RgbaImage::from_vec(3, 3, decode(&out).unwrap()).unwrap();
+        for p in img.pixels() {
+            assert_eq!(p.alpha(), 128)
+        }
+    }
+
+    #[test]
+    fn test_mask() {
+        let target = create_png_encoded_test_image_bytes();
+
+        let mut mask_img = RgbaImage::new(3, 3);
+        for p in mask_img.pixels_mut() {
+            *p = image::Rgba([0, 0, 0, 0]);
+        }
+
+        let mut mask_bytes = Vec::new();
+        DynamicImage::ImageRgba8(mask_img)
+            .write_to(&mut Cursor::new(&mut mask_bytes), ImageFormat::Png)
+            .unwrap();
+
+        let out = decode(mask(&target, &mask_bytes, &[1]).unwrap().as_bytes()).unwrap();
+        //alphachannel should be 0 everywhere
+        let img = RgbaImage::from_vec(3, 3, out).unwrap();
+        for p in img.pixels() {
+            assert_eq!(p.alpha(), 0)
+        }
+    }
 }

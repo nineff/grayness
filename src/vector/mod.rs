@@ -1,7 +1,7 @@
 use wasm_minimal_protocol::wasm_func;
 use xmltree::{Element, XMLNode};
 
-use crate::__BytesOrResultBytes;
+use crate::__ToResult;
 use crate::__send_result_to_host;
 use crate::__write_args_to_buffer;
 

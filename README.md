@@ -8,12 +8,13 @@ It uses the [wasm-minimal-protocol](https://github.com/astrale-sharp/wasm-minima
 The simplest way to use this plugin is to import the package grayness from [Typst Universe](https://typst.app/universe/package/grayness) into your typst code and use it's wrapper functions:
 
 ```typst
-#import "@preview/grayness:0.6.0":*
-#let imagedata = read("path-to-your-picture.jpg", encoding: none)
+#import "@preview/grayness:0.7.0":*
+#let imagedata = path("path-to-your-picture.jpg")
 #image-grayscale(imagedata)
 ```
 
 The [manual](doc/manual.pdf) provides further details.
+This repo only contains the Rust code to build the WASM-plugin, the Typst code for the universe package is in [it's own repo](https://github.com/nineff/packages/tree/main/packages/preview/grayness).
 
 You can also use this plugin directly, e.g. if you have compiled the WASM binary yourself.
 
