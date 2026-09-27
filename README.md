@@ -13,7 +13,7 @@ The simplest way to use this plugin is to import the package grayness from [Typs
 #image-grayscale(imagedata)
 ```
 
-The [manual](https://github.com/typst/packages/raw/main/packages/preview/grayness/0.7.0/manual.pdf) provides further details.
+The [manual](https://raw.githubusercontent.com/nineff/packages/main/packages/preview/grayness/0.7.0/manual.pdf) provides further details.
 This repo only contains the Rust code to build the WASM-plugin, the Typst code for the universe package is in [it's own repo](https://github.com/nineff/packages/tree/main/packages/preview/grayness).
 
 You can also use this plugin directly, e.g. if you have compiled the WASM binary yourself.
@@ -36,4 +36,12 @@ Then, build the crate with this target:
 
 ```sh
 cargo build --release --target wasm32-unknown-unknown
+```
+
+## Test
+
+The tests should be run on your native target-triple, e.g. `x86_64-unknown-linux-gnu`, since they aren't supported for wasm:
+
+```sh
+cargo test --target=x86_64-unknown-linux-gnu --lib
 ```

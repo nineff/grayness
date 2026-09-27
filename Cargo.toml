@@ -1,6 +1,6 @@
 [package]
 name = "grayness"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 authors = ["Nikolai Neff-Sarnow"]
 description = "This is a proof of concept typst wasm-plugin to allow simple image editing functions from within typst, written in Rust."
@@ -13,6 +13,8 @@ categories = ["grayscale", "image", "plugin", "typst", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
+base64 = "0.23.1"
+ciborium = "0.2.2"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp"] }
 wasm-minimal-protocol = "0.2.1"
 xmltree = "0.12.0"

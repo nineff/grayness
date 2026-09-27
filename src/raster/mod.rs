@@ -1,3 +1,19 @@
+//   Copyright 2026 Nikolai Neff-Sarnow
+//
+//   Licensed under the Apache License, Version 2.0 (the "License");
+//   you may not use this file except in compliance with the License.
+//   You may obtain a copy of the License at
+//
+//	   http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the License is distributed on an "AS IS" BASIS,
+//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//   See the License for the specific language governing permissions and
+//   limitations under the License.use wasm_minimal_protocol::{initiate_protocol, wasm_func};
+
+use ciborium::cbor;
+use ciborium::into_writer;
 use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader, Pixel, RgbaImage};
 use std::io::Cursor;
 use wasm_minimal_protocol::wasm_func;
@@ -6,7 +22,7 @@ use crate::__ToResult;
 use crate::__send_result_to_host;
 use crate::__write_args_to_buffer;
 
-fn write_image_buffer(img: &DynamicImage, format: ImageFormat) -> Result<Vec<u8>, String> {
+pub fn write_image_buffer(img: &DynamicImage, format: ImageFormat) -> Result<Vec<u8>, String> {
     let targetformat = match format {
         ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif | ImageFormat::WebP => format,
         _ => ImageFormat::Png,
@@ -19,7 +35,7 @@ fn write_image_buffer(img: &DynamicImage, format: ImageFormat) -> Result<Vec<u8>
     Ok(bytes)
 }
 
-fn get_decoded_image_from_bytes(bytes: &[u8]) -> Result<(DynamicImage, ImageFormat), String> {
+pub fn get_decoded_image_from_bytes(bytes: &[u8]) -> Result<(DynamicImage, ImageFormat), String> {
     let img_r = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| format!("Guessing the image format failed: {e:?}"))?;
@@ -54,13 +70,16 @@ pub fn decode(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
 pub fn infos(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let (img, format) = get_decoded_image_from_bytes(image_bytes)?;
     let (w, h) = img.dimensions();
+    let cbor = cbor!({
+        "w" => w,
+        "h" => h,
+        "f" => format!("{format:?}"),
+    })
+    .map_err(|e| format!("Could not serialize ImageInfos to CBOR: {e}"))?;
 
-    Ok([
-        w.to_le_bytes().as_slice(),
-        h.to_le_bytes().as_slice(),
-        format!("{format:?}").as_bytes(),
-    ]
-    .concat())
+    let mut out = Vec::new();
+    into_writer(&cbor, &mut out).map_err(|e| format!("could not write cbor: {e}"))?;
+    Ok(out)
 }
 
 #[wasm_func]
@@ -352,6 +371,7 @@ pub fn matrix(
 mod tests {
 
     use super::*;
+    use ciborium::{Value, from_reader, value::Integer};
     use image::{EncodableLayout, codecs::png::PngEncoder};
 
     const TESTIMAGE_PIXELS: [[[u8; 4]; 3]; 3] = [
@@ -424,11 +444,21 @@ mod tests {
         let input = create_png_encoded_test_image_bytes();
         let info = infos(&input).unwrap();
 
-        let w = u32::from_le_bytes(info[0..4].try_into().unwrap());
-        let h = u32::from_le_bytes(info[4..8].try_into().unwrap());
-        assert!(String::from_utf8(info[8..].into()).is_ok());
-        assert_eq!(w, 3);
-        assert_eq!(h, 3);
+        let res: Value = from_reader(info.as_slice()).expect("CBOR can be decoded");
+        let Value::Map(map) = res else {
+            panic!("expected CBOR map");
+        };
+
+        for (key, value) in map {
+            if let Value::Text(key) = key {
+                match key.as_str() {
+                    "w" => assert_eq!(value, Value::Integer(Integer::from(3))),
+                    "h" => assert_eq!(value, Value::Integer(Integer::from(3))),
+                    "f" => assert_eq!(value, Value::Text(String::from("Png"))),
+                    _ => {}
+                }
+            }
+        }
     }
 
     #[test]

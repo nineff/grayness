@@ -9,13 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- very basic unit tests for raster functions
+- very basic unit tests
+- plugin version can now be reported back
+- `svg_mask()` function to apply a raster-image mask to the SVG
+- `svg_infos()` function to get basic infos from SVGs
 
 ### Changed
 
 - bumped `wasm-minimal-protocol` to 0.2.1
 - updated readme
-- removed binary manual and linked to it in the readme
+- removed binary manual and linked to it in the readme instead
 
 ## [0.6.0] 2026-03-22
 

@@ -1,11 +1,31 @@
+//   Copyright 2026 Nikolai Neff-Sarnow
+//
+//   Licensed under the Apache License, Version 2.0 (the "License");
+//   you may not use this file except in compliance with the License.
+//   You may obtain a copy of the License at
+//
+//	   http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the License is distributed on an "AS IS" BASIS,
+//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//   See the License for the specific language governing permissions and
+//   limitations under the License.use wasm_minimal_protocol::{initiate_protocol, wasm_func};
+
+use ciborium::cbor;
+use ciborium::into_writer;
+use image::ImageFormat;
 use wasm_minimal_protocol::wasm_func;
 use xmltree::{Element, XMLNode};
 
 use crate::__ToResult;
 use crate::__send_result_to_host;
 use crate::__write_args_to_buffer;
+use crate::raster::get_decoded_image_from_bytes;
+use crate::raster::write_image_buffer;
 
 static TYPST_FILTER_ID_PREFIX: &str = "Typst_Filter_ID_";
+static TYPST_MASK_ID_PREFIX: &str = "Typst_Mask_ID_";
 
 fn get_next_filter_index(root: &Element) -> usize {
     let mut max_n = 0;
@@ -33,11 +53,43 @@ fn get_next_filter_index(root: &Element) -> usize {
     max_n + 1
 }
 
+fn get_next_mask_index(root: &Element) -> usize {
+    let mut max_n = 0;
+
+    //look through every mask element with an id matching the specified format and extract the maximum ID
+    for child in &root.children {
+        let XMLNode::Element(elem) = child else {
+            continue;
+        };
+
+        if elem.name != "mask" {
+            continue;
+        }
+        if let Some(id) = elem.attributes.get("id")
+            && let Some(num) = id.strip_prefix(TYPST_MASK_ID_PREFIX)
+            && let Ok(n) = num.parse::<usize>()
+        {
+            max_n = max_n.max(n);
+        }
+    }
+
+    max_n + 1
+}
+
+fn write_to_vec(svg_elem: &Element) -> Result<Vec<u8>, String> {
+    let mut svg_output = Vec::new();
+
+    svg_elem
+        .write(&mut svg_output)
+        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
+    Ok(svg_output)
+}
+
 fn add_svg_filter(
     mut svg_elem: Element,
     id: &str,
     filter_elem: Element,
-) -> Result<Vec<u8>, String> {
+) -> Result<Element, String> {
     //wrap all existing elements in a new group with the filter applied
     let mut group_element = Element::new("g");
     group_element
@@ -55,13 +107,28 @@ fn add_svg_filter(
         XMLNode::Element(filter_elem),
         XMLNode::Element(group_element),
     ];
+    Ok(svg_elem)
+}
 
-    let mut svg_output = Vec::new();
+fn add_svg_mask(mut svg_elem: Element, id: &str, mask_element: Element) -> Result<Element, String> {
+    //wrap all existing elements in a new group with the filter applied
+    let mut group_element = Element::new("g");
+    group_element
+        .attributes
+        .insert("mask".into(), format!("url(#{id})"));
 
-    svg_elem
-        .write(&mut svg_output)
-        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
-    Ok(svg_output)
+    for child in svg_elem.children {
+        if let XMLNode::Element(elem) = child {
+            group_element.children.push(XMLNode::Element(elem));
+        }
+    }
+
+    //add mask and replace existing children with new group
+    svg_elem.children = vec![
+        XMLNode::Element(mask_element),
+        XMLNode::Element(group_element),
+    ];
+    Ok(svg_elem)
 }
 
 #[wasm_func]
@@ -86,7 +153,7 @@ fn svg_grayscale(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(colormatrix_elem));
 
-    add_svg_filter(svg_elem, &id, filter_elem)
+    write_to_vec(&add_svg_filter(svg_elem, &id, filter_elem)?)
 }
 
 #[wasm_func]
@@ -129,11 +196,7 @@ fn svg_crop(
         );
     }
 
-    let mut svg_output = Vec::new();
-    svg_elem
-        .write(&mut svg_output)
-        .map_err(|e| format!("Could not write SVG bytes: {e:?}"))?;
-    Ok(svg_output)
+    write_to_vec(&svg_elem)
 }
 
 #[wasm_func]
@@ -161,7 +224,7 @@ fn svg_blur(image_bytes: &[u8], sigma: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_gaussian_blur));
 
-    add_svg_filter(svg_elem, &id, filter_elem)
+    write_to_vec(&add_svg_filter(svg_elem, &id, filter_elem)?)
 }
 
 #[wasm_func]
@@ -195,7 +258,7 @@ fn svg_transparency(image_bytes: &[u8], alpha: &[u8]) -> Result<Vec<u8>, String>
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    add_svg_filter(svg_elem, &id, filter_elem)
+    write_to_vec(&add_svg_filter(svg_elem, &id, filter_elem)?)
 }
 
 #[wasm_func]
@@ -242,7 +305,7 @@ fn svg_invert(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    add_svg_filter(svg_elem, &id, filter_elem)
+    write_to_vec(&add_svg_filter(svg_elem, &id, filter_elem)?)
 }
 
 #[wasm_func]
@@ -298,7 +361,7 @@ fn svg_brighten(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
         .children
         .push(XMLNode::Element(fe_component_transfer));
 
-    add_svg_filter(svg_elem, &id, filter_elem)
+    write_to_vec(&add_svg_filter(svg_elem, &id, filter_elem)?)
 }
 
 #[wasm_func]
@@ -327,7 +390,7 @@ fn svg_huerotate(image_bytes: &[u8], amount: &[u8]) -> Result<Vec<u8>, String> {
 
     filter_elem.children.push(XMLNode::Element(fe_color_matrix));
 
-    add_svg_filter(svg_elem, &id, filter_elem)
+    write_to_vec(&add_svg_filter(svg_elem, &id, filter_elem)?)
 }
 
 #[wasm_func]
@@ -454,5 +517,97 @@ fn svg_matrix(
 
     filter_elem.children.push(XMLNode::Element(fe_color_matrix));
 
-    add_svg_filter(svg_elem, &id, filter_elem)
+    write_to_vec(&add_svg_filter(svg_elem, &id, filter_elem)?)
+}
+
+#[wasm_func]
+fn svg_mask(image_bytes: &[u8], mask_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    use base64::prelude::*;
+
+    let mask = BASE64_STANDARD.encode(write_image_buffer(
+        &get_decoded_image_from_bytes(mask_bytes)?.0,
+        ImageFormat::Png,
+    )?);
+
+    let svg_elem =
+        Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
+    let num = get_next_mask_index(&svg_elem);
+
+    //create a mask element with the image as child
+    let id = format!("{TYPST_MASK_ID_PREFIX}{num}");
+    let mut mask_elem = Element::new("mask");
+    mask_elem.attributes.extend([
+        ("id".into(), id.clone()),
+        ("x".into(), "0".into()),
+        ("y".into(), "0".into()),
+        ("width".into(), "100%".into()),
+        ("height".into(), "100%".into()),
+    ]);
+    let mut image_elem = Element::new("image");
+    image_elem
+        .attributes
+        .insert("href".into(), format!("data:image/png;base64,{mask}")); //embedding the image instead of linking to it to maintain the api of passing raw bytes
+    image_elem.attributes.extend([
+        ("width".into(), "100%".into()),
+        ("height".into(), "100%".into()),
+    ]);
+    mask_elem.children.push(XMLNode::Element(image_elem));
+
+    write_to_vec(&add_svg_mask(svg_elem, &id, mask_elem)?)
+}
+#[wasm_func]
+fn svg_infos(image_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let svg_elem =
+        Element::parse(image_bytes).map_err(|e| format!("Could not parse SVG data: {e:?}"))?;
+    let w = svg_elem.attributes.get("width");
+    let h = svg_elem.attributes.get("height");
+    let view_box = svg_elem.attributes.get("viewBox");
+
+    let cbor = cbor!({
+        "w" => w,
+        "h" => h,
+        "viewBox" => view_box,
+    })
+    .map_err(|e| format!("Could not serialize svgInfos to CBOR: {e}"))?;
+    let mut out = Vec::new();
+    into_writer(&cbor, &mut out).map_err(|e| format!("could not write cbor: {e}"))?;
+    Ok(out)
+}
+
+//#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    #[test]
+    fn test_getting_next_mask_index() {
+        let minimal_svg =
+            Element::parse(r#"<svg xmlns="http://www.w3.org/2000/svg"></svg>"#.as_bytes())
+                .expect("SVG can be parsed");
+        //first free index is 1
+        assert_eq!(get_next_mask_index(&minimal_svg), 1);
+        //add minimal mask with random ID (choosen by fair dice roll)
+        let id = format!("{TYPST_MASK_ID_PREFIX}4");
+        let mut mask_elem = Element::new("mask");
+        mask_elem.attributes.insert("id".into(), id.clone());
+        let res = add_svg_mask(minimal_svg, &id, mask_elem).expect("Adding Mask works");
+        assert_eq!(get_next_mask_index(&res), 5);
+    }
+    #[test]
+    fn test_gettig_next_filder_index() {
+        let minimal_svg =
+            Element::parse(r#"<svg xmlns="http://www.w3.org/2000/svg"></svg>"#.as_bytes())
+                .expect("SVG can be parsed");
+        //first free index is 1
+        assert_eq!(get_next_filter_index(&minimal_svg), 1);
+
+        let filter_elem = Element::new("filter");
+        let f = add_svg_filter(
+            minimal_svg,
+            &format!("{TYPST_FILTER_ID_PREFIX}7"),
+            filter_elem,
+        )
+        .expect("Adding Filter Works");
+        assert_eq!(get_next_filter_index(&f), 8);
+    }
 }
